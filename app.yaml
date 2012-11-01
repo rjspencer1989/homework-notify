@@ -15,7 +15,7 @@
 ## <http://www.gnu.org/licenses/>.
 
 application: homework-notify
-version: 1
+version: 2
 runtime: python
 api_version: 1
 
@@ -35,11 +35,11 @@ handlers:
   static_files: static/robots.txt
   upload: static/robots.txt
 
-- url: /notify/1/?
+- url: /notify/2/?
   script: notify/urls.py
   secure: always
 
-- url: /notify/1/.*
+- url: /notify/2/.*
   script: notify/urls.py
   secure: always
 

@@ -14,7 +14,12 @@
 ## License along with this program.  If not, see
 ## <http://www.gnu.org/licenses/>.
 
-import logging, urllib, urllib2, datetime, hashlib, base64
+import logging
+import urllib
+import urllib2
+import datetime
+import hashlib
+import base64
 log = logging.info
 
 from google.appengine.api import urlfetch
@@ -27,7 +32,8 @@ from google.appengine.api import mail
 import notify.models as models
 import secrets
 import oauth
-                      
+
+
 class Root(webapp.RequestHandler):
     def get(self):
         routerid = models.DEFAULT_ROUTER_ID
@@ -37,6 +43,7 @@ class Root(webapp.RequestHandler):
             routerid = hashlib.sha1("%s:%s" % (n, d)).hexdigest()
         self.response.out.write(routerid)
 
+
 class AddRouter(webapp.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid = ", routerid).get()
@@ -45,63 +52,128 @@ class AddRouter(webapp.RequestHandler):
             return
         routerName = self.request.get("name")
         models.Router(routerid=routerid, name=routerName).put()
+
+
+class DeleteRegistration(webapp.RequestHandler):
+    def post(self, routerid):
+        r = models.Router.all().filter("routerid =", routerid).get()
+        if not r:
+            self.response.out.write("Router not found")
+            log("Router not found")
+            self.response.set_status(404)
+            return
+        requestedSuid = self.request.get("suid")
+        if not requestedSuid:
+            self.response.out.write("No Service Use ID entered. Stopping")
+            self.set_status(400)
+            log("no suid entered")
+            return
+        suid = models.ServiceUse.all().filter("suid =", requestedSuid).get()
+        if not suid:
+            self.response.out.write("Service use mot found. Stopping")
+            self.response.set_status(404)
+            log("suid not found")
+            return
+        suid.delete()
+
+
+class EditRegistration(webapp.RequestHandler):
+    def post(self, routerid):
+        r = models.Router.all().filter("routerid =", routerid).get()
+        if not r:
+            self.response.out.write("Router not found")
+            log("Router not found")
+            self.response.set_status(404)
+            return
+        requestedSuid = self.request.get("suid")
+        if not requestedSuid:
+            self.response.out.write("No Service Use ID entered. Stopping")
+            self.set_status(400)
+            log("no suid entered")
+            return
+        suid = models.ServiceUse.all().filter("suid =", requestedSuid).get()
+        if not suid:
+            self.response.out.write("Service use mot found. Stopping")
+            self.response.set_status(404)
+            log("suid not found")
+            return
+        requestedEndpoint = self.request.get("userdetails")
+        if not requestedEndpoint:
+            self.response.out.write("No user details entered. Stopping")
+            self.response.set_status(400)
+            log("no user details entered")
+            return
+        serviceUseId = generate_suid(routerid, suid.service, requestedEndpoint)
+        requestedService = suid.service
+        suid.delete()
+        models.ServiceUse(service=requestedService, router=r, endpoint=requestedEndpoint, suid=serviceUseId).put()
+        self.response.out.write(serviceUseId)
+        self.response.set_status(200)
+
+
 class Register(webapp.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found")
             log("Router not found")
             self.response.set_status(404)
             return
         requestedService = self.request.get("service")
-        if not requestedService: 
+        if not requestedService:
             self.response.out.write("No Service entered. Stopping")
             self.response.set_status(400)
             log("no service entered")
             return
         s = models.Service.get_by_key_name(requestedService)
-        if not s: 
+        if not s:
             self.response.out.write("Service not found. Stopping")
             self.response.set_status(404)
             log("service not found.")
             return
         requestedEndpoint = self.request.get("userdetails")
-        if not requestedEndpoint: 
+        if not requestedEndpoint:
             self.response.out.write("No user details entered. Stopping")
             self.response.set_status(400)
             log("no user details entered")
             return
-        n = models.ServiceUse.all().count()
-        d = datetime.datetime.now().isoformat()
-        serviceUseId = hashlib.sha1("%s:%s:%s" % (routerid, n, d)).hexdigest()
+
+        serviceUseId = generate_suid(routerid, requestedService, requestedEndpoint)
         models.ServiceUse(service=s, router=r, endpoint=requestedEndpoint, suid=serviceUseId).put()
+        self.response.out.write(serviceUseId)
+        self.response.set_status(200)
+
+
 class Log(webapp.RequestHandler):
     def get(self, routerid, pageno=None):
         r = models.Router.all().filter("routerid =", routerid).get()
         if not r:
             self.response.out.write("No Router found")
             self.response.set_status(404)
-            return            
-        
-        les = sorted([ le.todict() for s in r.services for le in s.log_entries ], key=lambda le:le['ts'])
+            return
+
+        les = sorted([le.todict() for s in r.services for le in s.log_entries], key=lambda le: le['ts'])
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json.dumps(les, indent=2))
+
 
 def json_services_used(r, s):
     s = models.Service.get_by_key_name(s)
     r = models.Router.all().filter("routerid =", r).get()
-    if not r: return ""
+    if not r:
+        return ""
 
     return json.dumps(
-        [ su.todict() for su in r.services.filter("service =", s) ],
+        [su.todict() for su in r.services.filter("service =", s)],
         indent=2)
+
 
 def log_notification(to, body, sus):
     serviceUsed = None
     for su in sus:
         if su.endpoint == to:
             serviceUsed = su
-    if not serviceUsed: 
+    if not serviceUsed:
         self.response.out.write("No matching endpoint found. Nothing to Log.")
         self.response.set_status(404)
         return
@@ -109,10 +181,16 @@ def log_notification(to, body, sus):
     emailbody = "Sent message: %s to %s from %s (%s) using service %s" % (body, to, serviceUsed.router.routerid, serviceUsed.router.name, serviceUsed.service.key().name())
     message = mail.EmailMessage(sender=s.endpoint, subject="Homework Router Notification sent")
     message.to = secrets.ETHNOGRAPHY_EMAIL
-    message.body = emailbody    
+    message.body = emailbody
     message.send()
-    
+
     models.Log(msg="Sent message: %s to %s" % (body, to), svcu=serviceUsed).put()
+
+
+def generate_suid(routerid, service, endpoint):
+    d = datetime.datetime.now().isoformat()
+    return hashlib.sha1("%s:%s:%s:%s" % (routerid, service, endpoint, d)).hexdigest()
+
 
 def generate_notification_id(routerid):
     n = models.NotifyResult.all().count()
@@ -120,15 +198,16 @@ def generate_notification_id(routerid):
     notificationId = hashlib.sha1("%s:%s:%s" % (routerid, n, d)).hexdigest()
     return notificationId
 
+
 class Status(webapp.RequestHandler):
     def post(self, routerid):
         u = models.Router.all().filter("routerid =", routerid).get()
-        if not u: 
+        if not u:
             self.response.out.write("Router not found. Can't request status")
             self.response.set_status(404)
             return
         status = self.request.get("notification")
-        if not status: 
+        if not status:
             self.response.out.write("No notification ID entered. Can't get status.")
             self.response.set_status(400)
             return
@@ -139,30 +218,32 @@ class Status(webapp.RequestHandler):
             return
         resultDict = notificationResult.todict()
         if not resultDict:
-            self.response.out.write("Error retrieving status.");
+            self.response.out.write("Error retrieving status.")
             self.response.set_status(400)
             return
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json.dumps(resultDict, indent=2))
 
+
 class Email(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't send notification")
             self.response.set_status(404)
             return
 
         s = models.Service.get_by_key_name("email")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("no email addresses available to send to")
             self.response.set_status(404)
             return
 
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("no message given")
             self.response.set_status(400)
             return
@@ -172,12 +253,12 @@ class Email(webapp.RequestHandler):
             self.response.out.write("No email address entered")
             self.response.set_status(400)
             return
-        registered_emails = [ su.endpoint for su in sus ]
-        if to not in registered_emails: 
+        registered_emails = [su.endpoint for su in sus]
+        if to not in registered_emails:
             self.response.out.write("Unknown email address entered. Unable to send message")
             self.response.set_status(404)
             return
-                
+
         log("EMAIL: user:%s to:%s body:\n%s\n--\n" % (
             r.name, to, body))
 
@@ -187,73 +268,79 @@ class Email(webapp.RequestHandler):
         message.send()
         log_notification(to, body, sus)
         self.response.out.write("email sent")
+
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "email"))
-        
+
+
 class Facebook(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't send notification")
             self.response.set_status(404)
             return
-    
+
         s = models.Service.get_by_key_name("facebook")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("No Facebook accounts available to send to")
             self.response.set_status(404)
             return
-        
+
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("No message given. Nothing to send")
             self.response.set_status(400)
             return
-        
+
         to = self.request.get("to")
         if not to:
-            self.response.out.write("No Facebook email address entered")
+            self.response.out.write("No Facebook account entered")
             self.response.set_status(400)
             return
-        registered_emails = [ su.endpoint for su in sus ]
-        if to not in registered_emails: 
-            self.response.out.write("Unknown Facebook email address entered. Unable to send message")
+        registered_emails = [su.endpoint for su in sus]
+        if to not in registered_emails:
+            self.response.out.write("Unknown Facebook account entered. Unable to send message")
             self.response.set_status(404)
             return
-        
+        to = "%s@facebook.com" % (to)
         log("FACEBOOK: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
-        
+
         message = mail.EmailMessage(sender=s.endpoint, subject="Homework Router Notification!")
         message.to = to
         message.body = body
         message.send()
         log_notification(to, body, sus)
         self.response.out.write("Facebook message sent")
+
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "facebook"))
 
+
 class Twitter(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't send notification")
             self.response.set_status(404)
             return
-        
+
         s = models.Service.get_by_key_name("twitter")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("No Twitter accounts available to send to")
             self.response.set_status(404)
             return
 
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("No message given. Nothing to send")
             self.response.set_status(400)
             return
@@ -263,7 +350,7 @@ class Twitter(webapp.RequestHandler):
             self.response.out.write("No Twitter Account Name entered")
             self.response.set_status(400)
             return
-        registered_eps = [ su.endpoint for su in sus ]
+        registered_eps = [su.endpoint for su in sus]
         if to not in registered_eps:
             self.response.out.write("Unknown Twitter account entered. Unable to send message")
             self.response.set_status(404)
@@ -276,114 +363,119 @@ class Twitter(webapp.RequestHandler):
             secrets.TWITTER_CONSUMER_SECRET,
             None
             )
-        
+
         resp = client.make_request(
-            "http://api.twitter.com/1/direct_messages/new.json",
+            "https://api.twitter.com/1.1/direct_messages/new.json",
             token=secrets.TWITTER_ACCESS_TOKEN,
             secret=secrets.TWITTER_ACCESS_TOKEN_SECRET,
-            additional_params={ 'text': body, 'screen_name': to,},
+            additional_params={'text': body, 'screen_name': to, },
             method=urlfetch.POST,
             )
 
         log("result: %s -- %s -- %s -- %s" % (resp, resp.status_code, resp.headers, resp.content))
         log_notification(to, body, sus)
         notificationId = generate_notification_id(routerid)
-        models.NotifyResult(statusCode=resp.status_code, statusMessage=resp.content,notification=notificationId, router=r).put()
-        self.response.out.write(notificationId);
+        models.NotifyResult(statusCode=resp.status_code, statusMessage=resp.content, notification=notificationId, router=r).put()
+        self.response.out.write(notificationId)
+
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "twitter"))
 
+
 class Sms(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't send notification")
             self.response.set_status(404)
             return
-    
+
         s = models.Service.get_by_key_name("phone")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("No Phones available to send to")
             self.response.set_status(404)
             return
-        
+
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("No message given. Nothing to send")
             self.response.set_status(400)
             return
-        
+
         to = self.request.get("to")
         if not to:
             self.response.out.write("No Phone number entered")
             self.response.set_status(400)
             return
-        registered_phones = [ su.endpoint for su in sus ]
-        if to not in registered_phones: 
+        registered_phones = [su.endpoint for su in sus]
+        if to not in registered_phones:
             self.response.out.write("Unknown phone number entered. Unable to send message")
             self.response.set_status(404)
             return
-        
+
         log("PHONE: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
         smsToken = secrets.PHONE_TOKEN
-        dict = { 'numberToDial' : to, 'message' : body}
+        dict = {'numberToDial': to, 'message': body}
         data = urllib.urlencode(dict)
         theurl = "https://api.tropo.com/1.0/sessions?action=create&token=%s&%s" % (smsToken, data)
-        resp = urlfetch.fetch(theurl);
+        resp = urlfetch.fetch(theurl)
         log("result: %s -- %s -- %s -- %s" % (resp, resp.status_code, resp.headers, resp.content))
         log_notification(to, body, sus)
         notificationId = generate_notification_id(routerid)
-        models.NotifyResult(statusCode=resp.status_code, statusMessage=resp.content,notification=notificationId, router=r).put()
-        self.response.out.write(notificationId);
+        models.NotifyResult(statusCode=resp.status_code, statusMessage=resp.content, notification=notificationId, router=r).put()
+        self.response.out.write(notificationId)
 
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "phone"))
 
+
 class Push(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't send notification")
             self.response.set_status(404)
             return
-        
+
         s = models.Service.get_by_key_name("push")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("No devices available to send to")
             self.response.set_status(404)
             return
-        
+
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("No message given. Nothing to send")
             self.response.set_status(400)
             return
-        
+
         to = self.request.get("to")
         if not to:
             self.response.out.write("No device ID entered")
             self.response.set_status(400)
             return
-        registered_phones = [ su.endpoint for su in sus ]
-        if to not in registered_phones: 
+        registered_phones = [su.endpoint for su in sus]
+        if to not in registered_phones:
             self.response.out.write("Unknown device ID entered. Unable to send message")
             self.response.set_status(404)
             return
-        
-        log("PUSH: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))  
+
+        log("PUSH: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
         notificationJson = "{\"aps\": {\"alert\": \"%s\"}, \"device_tokens\": [\"%s\"]}" % (body, to)
         log("JSON: %s" % (notificationJson))
         theurl = "https://go.urbanairship.com/api/push/"
         passwordManager = urllib2.HTTPPasswordMgrWithDefaultRealm()
-        passwordManager.add_password(None, theurl, secrets.PUSH_KEY, secrets.PUSH_SECRET);
-        authHandler = urllib2.HTTPBasicAuthHandler(passwordManager);
-        opener = urllib2.build_opener(authHandler);
+        passwordManager.add_password(None, theurl, secrets.PUSH_KEY, secrets.PUSH_SECRET)
+        authHandler = urllib2.HTTPBasicAuthHandler(passwordManager)
+        opener = urllib2.build_opener(authHandler)
         urllib2.install_opener(opener)
         sc = 200
         sm = "Notification Sent"
@@ -398,49 +490,52 @@ class Push(webapp.RequestHandler):
             sm = e.reason
         log_notification(to, body, sus)
         notificationId = generate_notification_id(routerid)
-        models.NotifyResult(statusCode=sc, statusMessage=sm,notification=notificationId, router=r).put()
-        self.response.out.write(notificationId);
+        models.NotifyResult(statusCode=sc, statusMessage=sm, notification=notificationId, router=r).put()
+        self.response.out.write(notificationId)
 
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "push"))
 
+
 class Growl(webapp.RequestHandler):
     def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID: return
+        if routerid == models.DEFAULT_ROUTER_ID:
+            return
         r = models.Router.all().filter("routerid =", routerid).get()
-        if not r: 
+        if not r:
             self.response.out.write("Router not found. Can't log notification")
             self.response.set_status(404)
             return
-        
+
         s = models.Service.get_by_key_name("growl")
         sus = r.services.filter("service =", s).fetch(100)
-        if not sus: 
+        if not sus:
             self.response.out.write("No Growl clients available. Can't log the notification")
             self.response.set_status(404)
             return
-        
+
         body = self.request.get("body")
-        if not body: 
+        if not body:
             self.response.out.write("No message given. Nothing to log")
             self.response.set_status(400)
             return
-        
+
         to = self.request.get("to")
         if not to:
             self.response.out.write("No IP Address entered, can't log notification, without destination")
             self.response.set_status(400)
             return
-        registered_devices = [ su.endpoint for su in sus ]
-        if to not in registered_devices: 
+        registered_devices = [su.endpoint for su in sus]
+        if to not in registered_devices:
             self.response.out.write("Unknown IP Address entered. Unable to log message")
             self.response.set_status(404)
             return
-        
+
         log("GROWL: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
         log_notification(to, body, sus)
         self.response.out.write("Growl notification sent")
+
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "growl"))

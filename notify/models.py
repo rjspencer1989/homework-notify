@@ -14,7 +14,10 @@
 ## License along with this program.  If not, see
 ## <http://www.gnu.org/licenses/>.
 
-import sys, logging, datetime, time
+import sys
+import logging
+import datetime
+import time
 log = logging.info
 err = logging.exception
 
@@ -24,44 +27,51 @@ from django.utils import simplejson as json
 from google.appengine.ext import db
 from google.appengine.ext.db import polymodel
 
+
 def datetime_as_float(dt):
     '''Convert a datetime.datetime into a microsecond-precision float.'''
-    return time.mktime(dt.timetuple())+(dt.microsecond/1e6)
+    return time.mktime(dt.timetuple()) + (dt.microsecond / 1e6)
 
-DEFAULT_ROUTER_ID = "0"*40
-DEFAULT_SERVICEUSE_ID = "1"*40
+DEFAULT_ROUTER_ID = "0" * 40
+DEFAULT_SERVICEUSE_ID = "1" * 40
+
 
 class Router(db.Model):
-    routerid  = db.StringProperty(required=True)
+    routerid = db.StringProperty(required=True)
     name = db.StringProperty(required=False)
 
     def todict(self):
-        return { 'routerid': self.routerid,
-                 'name': self.name,
-                 }
-    
+        return {'routerid': self.routerid,
+                'name': self.name,
+                }
+
     def put(self):
         n = db.GqlQuery(
             "SELECT * FROM Router WHERE routerid=:r", r=self.routerid).count()
-        if n > 0: raise ValueError("collision", self.routerid, n)
-        
-        super(Router, self).put()        
+        if n > 0:
+            raise ValueError("collision", self.routerid, n)
+
+        super(Router, self).put()
 
     @staticmethod
     def ins_default():
-        try: Router(routerid=DEFAULT_ROUTER_ID, name="empty-default-router").put()
+        try:
+            Router(routerid=DEFAULT_ROUTER_ID, name="empty-default-router").put()
         except ValueError, ve:
-            if (ve[0] == "collision" and ve[1] == DEFAULT_ROUTER_ID): pass
-            else: raise
+            if (ve[0] == "collision" and ve[1] == DEFAULT_ROUTER_ID):
+                pass
+            else:
+                raise
+
 
 class Service(db.Model):
     endpoint = db.StringProperty(required=True)
 
     def todict(self):
-        return { 'service': self.key().name(),
-                 'endpoint': self.endpoint,
-                 }
-    
+        return {'service': self.key().name(),
+                'endpoint': self.endpoint,
+                }
+
     @staticmethod
     def ins_default():
         Service.get_or_insert("twitter", endpoint=secrets.TWITTER_ENDPOINT)
@@ -71,6 +81,7 @@ class Service(db.Model):
         Service.get_or_insert("push", endpoint=secrets.PUSH_ENDPOINT)
         Service.get_or_insert("growl", endpoint=secrets.GROWL_ENDPOINT)
 
+
 class ServiceUse(db.Model):
     suid = db.StringProperty(required=True)
     service = db.ReferenceProperty(Service, collection_name="uses", required=True)
@@ -78,18 +89,19 @@ class ServiceUse(db.Model):
     endpoint = db.StringProperty(required=True)
 
     def todict(self):
-        return { 'suid': self.suid,
-                 'service': self.service.todict(),
-                 'router': self.router.todict(),
-                 'endpoint': self.endpoint,
-                 }
+        return {'suid': self.suid,
+                'service': self.service.todict(),
+                'router': self.router.todict(),
+                'endpoint': self.endpoint,
+                }
 
     def put(self):
         n = db.GqlQuery(
             "SELECT * FROM ServiceUse WHERE suid=:suid", suid=self.suid).count()
-        if n > 0: raise ValueError("collision", self.suid, n)
-        
-        super(ServiceUse, self).put()        
+        if n > 0:
+            raise ValueError("collision", self.suid, n)
+
+        super(ServiceUse, self).put()
 
     @staticmethod
     def ins_default():
@@ -101,29 +113,34 @@ class ServiceUse(db.Model):
                 service=service, router=router
                 ).put()
         except ValueError, ve:
-            if (ve[0] == "collision" and ve[1] == DEFAULT_SERVICEUSE_ID): pass
-            else: raise
-                   
+            if (ve[0] == "collision" and ve[1] == DEFAULT_SERVICEUSE_ID):
+                pass
+            else:
+                raise
+
+
 class Log(db.Model):
     svcu = db.ReferenceProperty(ServiceUse, collection_name="log_entries")
-    ts   = db.DateTimeProperty(auto_now_add=True)
-    msg  = db.TextProperty(required=True)
+    ts = db.DateTimeProperty(auto_now_add=True)
+    msg = db.TextProperty(required=True)
 
     def todict(self):
         ts = datetime_as_float(self.ts) if self.ts else None
-        return { 'uid': self.svcu.router.routerid,
-                 'msg': self.msg,
-                 'service': self.svcu.service.key().name(),
-                 'ts': ts,
-                 }
+        return {'uid': self.svcu.router.routerid,
+                'msg': self.msg,
+                'service': self.svcu.service.key().name(),
+                'ts': ts,
+                }
+
+
 class NotifyResult(db.Model):
     statusCode = db.IntegerProperty(required=True)
     statusMessage = db.TextProperty(required=True)
     notification = db.StringProperty(required=True)
     router = db.ReferenceProperty(Router, collection_name="statuses", required=True)
-    
+
     def todict(self):
         return {
-            'code' : self.statusCode,
-            'message' : self.statusMessage,
+            'code': self.statusCode,
+            'message': self.statusMessage,
             }
