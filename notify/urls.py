@@ -14,9 +14,7 @@
 ## License along with this program.  If not, see
 ## <http://www.gnu.org/licenses/>.
 
-from google.appengine.ext import webapp
-from google.appengine.ext.webapp.util import run_wsgi_app
-
+import webapp2
 import notify.models as models
 import notify.views as views
 
@@ -31,7 +29,6 @@ urls += map(
       (r'email/?', views.Email),
       (r'facebook/?', views.Facebook),
       (r'twitter/?', views.Twitter),
-      (r'sms/?', views.Sms),
       (r'phone/?', views.Sms),
       (r'push/?', views.Push),
       (r'growl/?', views.Growl),
@@ -42,16 +39,4 @@ urls += map(
       (r'edit/?', views.EditRegistration),
       (r'delete/?', views.DeleteRegistration),
       ])
-
-application = webapp.WSGIApplication(urls, debug=False)
-
-
-def main():
-    ## grim. but without this, the dev_appserver datastore can't seem
-    ## to create valid entities
-    models.Router.ins_default()
-    models.Service.ins_default()
-    models.ServiceUse.ins_default()
-    run_wsgi_app(application)
-if __name__ == "__main__":
-    main()
+application = webapp2.WSGIApplication(urls, debug=False)

@@ -23,7 +23,7 @@ err = logging.exception
 
 import secrets
 
-from django.utils import simplejson as json
+import json
 from google.appengine.ext import db
 from google.appengine.ext.db import polymodel
 

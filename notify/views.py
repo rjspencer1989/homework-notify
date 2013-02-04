@@ -23,10 +23,8 @@ import base64
 log = logging.info
 
 from google.appengine.api import urlfetch
-from google.appengine.ext import webapp
-from google.appengine.api.labs import taskqueue
-from google.appengine.api import users
-from django.utils import simplejson as json
+import webapp2
+import json
 from google.appengine.api import mail
 
 import notify.models as models
@@ -34,7 +32,7 @@ import secrets
 import oauth
 
 
-class Root(webapp.RequestHandler):
+class Root(webapp2.RequestHandler):
     def get(self):
         routerid = models.DEFAULT_ROUTER_ID
         while routerid == models.DEFAULT_ROUTER_ID:
@@ -44,7 +42,7 @@ class Root(webapp.RequestHandler):
         self.response.out.write(routerid)
 
 
-class AddRouter(webapp.RequestHandler):
+class AddRouter(webapp2.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid = ", routerid).get()
         if r:
@@ -54,7 +52,7 @@ class AddRouter(webapp.RequestHandler):
         models.Router(routerid=routerid, name=routerName).put()
 
 
-class DeleteRegistration(webapp.RequestHandler):
+class DeleteRegistration(webapp2.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid =", routerid).get()
         if not r:
@@ -77,7 +75,7 @@ class DeleteRegistration(webapp.RequestHandler):
         suid.delete()
 
 
-class EditRegistration(webapp.RequestHandler):
+class EditRegistration(webapp2.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid =", routerid).get()
         if not r:
@@ -111,7 +109,7 @@ class EditRegistration(webapp.RequestHandler):
         self.response.set_status(200)
 
 
-class Register(webapp.RequestHandler):
+class Register(webapp2.RequestHandler):
     def post(self, routerid):
         r = models.Router.all().filter("routerid =", routerid).get()
         if not r:
@@ -144,7 +142,7 @@ class Register(webapp.RequestHandler):
         self.response.set_status(200)
 
 
-class Log(webapp.RequestHandler):
+class Log(webapp2.RequestHandler):
     def get(self, routerid, pageno=None):
         r = models.Router.all().filter("routerid =", routerid).get()
         if not r:
@@ -174,8 +172,6 @@ def log_notification(to, body, sus):
         if su.endpoint == to:
             serviceUsed = su
     if not serviceUsed:
-        self.response.out.write("No matching endpoint found. Nothing to Log.")
-        self.response.set_status(404)
         return
     s = models.Service.get_by_key_name("email")
     emailbody = "Sent message: %s to %s from %s (%s) using service %s" % (body, to, serviceUsed.router.routerid, serviceUsed.router.name, serviceUsed.service.key().name())
@@ -199,7 +195,7 @@ def generate_notification_id(routerid):
     return notificationId
 
 
-class Status(webapp.RequestHandler):
+class Status(webapp2.RequestHandler):
     def post(self, routerid):
         u = models.Router.all().filter("routerid =", routerid).get()
         if not u:
@@ -225,7 +221,7 @@ class Status(webapp.RequestHandler):
         self.response.out.write(json.dumps(resultDict, indent=2))
 
 
-class Email(webapp.RequestHandler):
+class Email(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -274,7 +270,7 @@ class Email(webapp.RequestHandler):
         self.response.out.write(json_services_used(routerid, "email"))
 
 
-class Facebook(webapp.RequestHandler):
+class Facebook(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -322,7 +318,7 @@ class Facebook(webapp.RequestHandler):
         self.response.out.write(json_services_used(routerid, "facebook"))
 
 
-class Twitter(webapp.RequestHandler):
+class Twitter(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -383,7 +379,7 @@ class Twitter(webapp.RequestHandler):
         self.response.out.write(json_services_used(routerid, "twitter"))
 
 
-class Sms(webapp.RequestHandler):
+class Sms(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -434,7 +430,7 @@ class Sms(webapp.RequestHandler):
         self.response.out.write(json_services_used(routerid, "phone"))
 
 
-class Push(webapp.RequestHandler):
+class Push(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -469,7 +465,7 @@ class Push(webapp.RequestHandler):
             return
 
         log("PUSH: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
-        notificationJson = "{\"aps\": {\"alert\": \"%s\"}, \"device_tokens\": [\"%s\"]}" % (body, to)
+        notificationJson = "{\"android\": {\"alert\": \"%s\"}, \"apids\": [\"%s\"]}" % (body, to)
         log("JSON: %s" % (notificationJson))
         theurl = "https://go.urbanairship.com/api/push/"
         passwordManager = urllib2.HTTPPasswordMgrWithDefaultRealm()
@@ -485,9 +481,10 @@ class Push(webapp.RequestHandler):
             resp = f.read()
             f.close()
             log("result: %s" % (resp))
-        except URLError, e:
+        except urllib2.URLError, e:
             sc = e.code
-            sm = e.reason
+            sm = str(e)
+            self.response.out.write(sm)
         log_notification(to, body, sus)
         notificationId = generate_notification_id(routerid)
         models.NotifyResult(statusCode=sc, statusMessage=sm, notification=notificationId, router=r).put()
@@ -498,7 +495,7 @@ class Push(webapp.RequestHandler):
         self.response.out.write(json_services_used(routerid, "push"))
 
 
-class Growl(webapp.RequestHandler):
+class Growl(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
             return
@@ -523,7 +520,7 @@ class Growl(webapp.RequestHandler):
 
         to = self.request.get("to")
         if not to:
-            self.response.out.write("No IP Address entered, can't log notification, without destination")
+            self.response.out.write("No IP Address entered, can't log notification without destination")
             self.response.set_status(400)
             return
         registered_devices = [su.endpoint for su in sus]
