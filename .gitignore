@@ -1,3 +1,4 @@
 secrets.py
 *.pyc
 */.DS_Store
+.DS_Store
