@@ -73,7 +73,7 @@ class DeleteRegistration(webapp2.RequestHandler):
             log("suid not found")
             return
         suid.delete()
-
+        self.response.set_status(200)
 
 class EditRegistration(webapp2.RequestHandler):
     def post(self, routerid):
