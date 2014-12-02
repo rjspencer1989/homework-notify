@@ -270,54 +270,6 @@ class Email(webapp2.RequestHandler):
         self.response.out.write(json_services_used(routerid, "email"))
 
 
-class Facebook(webapp2.RequestHandler):
-    def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID:
-            return
-        r = models.Router.all().filter("routerid =", routerid).get()
-        if not r:
-            self.response.out.write("Router not found. Can't send notification")
-            self.response.set_status(404)
-            return
-
-        s = models.Service.get_by_key_name("facebook")
-        sus = r.services.filter("service =", s).fetch(100)
-        if not sus:
-            self.response.out.write("No Facebook accounts available to send to")
-            self.response.set_status(404)
-            return
-
-        body = self.request.get("body")
-        if not body:
-            self.response.out.write("No message given. Nothing to send")
-            self.response.set_status(400)
-            return
-
-        to = self.request.get("to")
-        if not to:
-            self.response.out.write("No Facebook account entered")
-            self.response.set_status(400)
-            return
-        registered_emails = [su.endpoint for su in sus]
-        if to not in registered_emails:
-            self.response.out.write("Unknown Facebook account entered. Unable to send message")
-            self.response.set_status(404)
-            return
-        to = "%s@facebook.com" % (to)
-        log("FACEBOOK: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
-
-        message = mail.EmailMessage(sender=s.endpoint, subject="Homework Router Notification!")
-        message.to = to
-        message.body = body
-        message.send()
-        log_notification(to, body, sus)
-        self.response.out.write("Facebook message sent")
-
-    def get(self, routerid):
-        self.response.headers['Content-Type'] = 'application/json'
-        self.response.out.write(json_services_used(routerid, "facebook"))
-
-
 class Twitter(webapp2.RequestHandler):
     def post(self, routerid):
         if routerid == models.DEFAULT_ROUTER_ID:
@@ -428,71 +380,6 @@ class Sms(webapp2.RequestHandler):
     def get(self, routerid):
         self.response.headers['Content-Type'] = 'application/json'
         self.response.out.write(json_services_used(routerid, "phone"))
-
-
-class Push(webapp2.RequestHandler):
-    def post(self, routerid):
-        if routerid == models.DEFAULT_ROUTER_ID:
-            return
-        r = models.Router.all().filter("routerid =", routerid).get()
-        if not r:
-            self.response.out.write("Router not found. Can't send notification")
-            self.response.set_status(404)
-            return
-
-        s = models.Service.get_by_key_name("push")
-        sus = r.services.filter("service =", s).fetch(100)
-        if not sus:
-            self.response.out.write("No devices available to send to")
-            self.response.set_status(404)
-            return
-
-        body = self.request.get("body")
-        if not body:
-            self.response.out.write("No message given. Nothing to send")
-            self.response.set_status(400)
-            return
-
-        to = self.request.get("to")
-        if not to:
-            self.response.out.write("No device ID entered")
-            self.response.set_status(400)
-            return
-        registered_phones = [su.endpoint for su in sus]
-        if to not in registered_phones:
-            self.response.out.write("Unknown device ID entered. Unable to send message")
-            self.response.set_status(404)
-            return
-
-        log("PUSH: user:%s to:%s body:\n%s\n--\n" % (r.name, to, body))
-        notificationJson = "{\"android\": {\"alert\": \"%s\"}, \"apids\": [\"%s\"]}" % (body, to)
-        log("JSON: %s" % (notificationJson))
-        theurl = "https://go.urbanairship.com/api/push/"
-        passwordManager = urllib2.HTTPPasswordMgrWithDefaultRealm()
-        passwordManager.add_password(None, theurl, secrets.PUSH_KEY, secrets.PUSH_SECRET)
-        authHandler = urllib2.HTTPBasicAuthHandler(passwordManager)
-        opener = urllib2.build_opener(authHandler)
-        urllib2.install_opener(opener)
-        sc = 200
-        sm = "Notification Sent"
-        req = urllib2.Request(theurl, notificationJson, {'Content-Type': 'application/json'})
-        try:
-            f = urllib2.urlopen(req)
-            resp = f.read()
-            f.close()
-            log("result: %s" % (resp))
-        except urllib2.URLError, e:
-            sc = e.code
-            sm = str(e)
-            self.response.out.write(sm)
-        log_notification(to, body, sus)
-        notificationId = generate_notification_id(routerid)
-        models.NotifyResult(statusCode=sc, statusMessage=sm, notification=notificationId, router=r).put()
-        self.response.out.write(notificationId)
-
-    def get(self, routerid):
-        self.response.headers['Content-Type'] = 'application/json'
-        self.response.out.write(json_services_used(routerid, "push"))
 
 
 class Growl(webapp2.RequestHandler):
