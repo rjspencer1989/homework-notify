@@ -49,7 +49,7 @@ from google.appengine.api import urlfetch
 from google.appengine.ext import db
 
 from cgi import parse_qs
-from django.utils import simplejson as json
+import json
 from hashlib import sha1
 from hmac import new as hmac
 from random import getrandbits
@@ -57,8 +57,6 @@ from time import time
 from urllib import urlencode
 from urllib import quote as urlquote
 from urllib import unquote as urlunquote
-
-import logging
 
 
 class OAuthException(Exception):

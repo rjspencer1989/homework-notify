@@ -15,12 +15,12 @@
 ## <http://www.gnu.org/licenses/>.
 
 application: homework-notify
-version: 1
-runtime: python
+version: 2
+runtime: python27
+threadsafe: false
 api_version: 1
 
 builtins:
-- datastore_admin: on
 - appstats: on
 
 handlers:
@@ -35,14 +35,14 @@ handlers:
   static_files: static/robots.txt
   upload: static/robots.txt
 
-- url: /notify/1/?
-  script: notify/urls.py
+- url: /notify/2/?
+  script: notify.urls.application
   secure: always
 
-- url: /notify/1/.*
-  script: notify/urls.py
+- url: /notify/2/.*
+  script: notify.urls.application
   secure: always
 
 - url: /.*
-  script: notfound.py
+  script: notfound.application
   secure: always

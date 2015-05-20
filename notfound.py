@@ -14,16 +14,13 @@
 ## License along with this program.  If not, see
 ## <http://www.gnu.org/licenses/>.
 
-import os
+import webapp2
 
-from google.appengine.ext import webapp
-from google.appengine.ext.webapp.util import run_wsgi_app
 
-class NotFound(webapp.RequestHandler):
+class NotFound(webapp2.RequestHandler):
     '''Page not found view handler.'''
 
-    def get(self): self.redirect("http://www.homenetworks.ac.uk/")
+    def get(self):
+        self.redirect("http://www.homenetworks.ac.uk/")
 
-application = webapp.WSGIApplication([('^/.*', NotFound),], debug=False)
-def main(): run_wsgi_app(application) 
-if __name__ == "__main__": main()
+application = webapp2.WSGIApplication([('^/.*', NotFound), ], debug=False)
